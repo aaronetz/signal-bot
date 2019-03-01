@@ -15,3 +15,5 @@ gradle-app.setting
 
 /out/
 /.idea/
+*.iml
+local.properties

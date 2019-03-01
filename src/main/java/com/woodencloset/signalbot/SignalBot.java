@@ -1,0 +1,274 @@
+package com.woodencloset.signalbot;
+
+import org.signal.libsignal.metadata.certificate.CertificateValidator;
+import org.whispersystems.libsignal.IdentityKey;
+import org.whispersystems.libsignal.IdentityKeyPair;
+import org.whispersystems.libsignal.InvalidKeyException;
+import org.whispersystems.libsignal.ecc.Curve;
+import org.whispersystems.libsignal.ecc.ECKeyPair;
+import org.whispersystems.libsignal.ecc.ECPrivateKey;
+import org.whispersystems.libsignal.state.PreKeyRecord;
+import org.whispersystems.libsignal.state.SignalProtocolStore;
+import org.whispersystems.libsignal.state.SignedPreKeyRecord;
+import org.whispersystems.libsignal.state.impl.InMemorySignalProtocolStore;
+import org.whispersystems.libsignal.util.KeyHelper;
+import org.whispersystems.libsignal.util.Medium;
+import org.whispersystems.libsignal.util.guava.Optional;
+import org.whispersystems.signalservice.api.SignalServiceAccountManager;
+import org.whispersystems.signalservice.api.SignalServiceMessagePipe;
+import org.whispersystems.signalservice.api.SignalServiceMessageReceiver;
+import org.whispersystems.signalservice.api.SignalServiceMessageSender;
+import org.whispersystems.signalservice.api.crypto.SignalServiceCipher;
+import org.whispersystems.signalservice.api.crypto.UnidentifiedAccess;
+import org.whispersystems.signalservice.api.crypto.UnidentifiedAccessPair;
+import org.whispersystems.signalservice.api.messages.SignalServiceContent;
+import org.whispersystems.signalservice.api.messages.SignalServiceDataMessage;
+import org.whispersystems.signalservice.api.messages.SignalServiceEnvelope;
+import org.whispersystems.signalservice.api.messages.SignalServiceGroup;
+import org.whispersystems.signalservice.api.push.SignalServiceAddress;
+import org.whispersystems.signalservice.api.push.TrustStore;
+import org.whispersystems.signalservice.api.util.UptimeSleepTimer;
+import org.whispersystems.signalservice.api.websocket.ConnectivityListener;
+import org.whispersystems.signalservice.internal.configuration.SignalCdnUrl;
+import org.whispersystems.signalservice.internal.configuration.SignalContactDiscoveryUrl;
+import org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration;
+import org.whispersystems.signalservice.internal.configuration.SignalServiceUrl;
+import org.whispersystems.signalservice.internal.util.Base64;
+import org.whispersystems.signalservice.internal.util.Util;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.SecureRandom;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.prefs.BackingStoreException;
+import java.util.prefs.Preferences;
+import java.util.stream.Collectors;
+
+public class SignalBot {
+    private static final String UNIDENTIFIED_SENDER_TRUST_ROOT = "BXu6QIKVz5MA8gstzfOgRQGqyLqOwNKHL6INkv3IHWMF";
+    private static final String SIGNAL_URL = "https://textsecure-service.whispersystems.org";
+    private static final String SIGNAL_CDN_URL = "https://cdn.signal.org";
+    private static final String SIGNAL_CONTACT_DISCOVERY_URL = "https://api.directory.signal.org";
+    private static final String USER_AGENT = "BOT";
+    private static final TrustStore TRUST_STORE = new TrustStore() {
+        @Override
+        public InputStream getKeyStoreInputStream() {
+            return getClass().getResourceAsStream("/whisper.store");
+        }
+
+        @Override
+        public String getKeyStorePassword() {
+            return "whisper";
+        }
+    };
+    private static final int BATCH_SIZE = 100;
+    private static Logger logger = Logger.getLogger(SignalBot.class.getSimpleName());
+    private static Preferences prefs = Preferences.userNodeForPackage(SignalBot.class).node(SignalBot.class.getSimpleName());
+    private static SignalServiceConfiguration config = new SignalServiceConfiguration(
+            new SignalServiceUrl[]{new SignalServiceUrl(SIGNAL_URL, TRUST_STORE)},
+            new SignalCdnUrl[]{new SignalCdnUrl(SIGNAL_CDN_URL, TRUST_STORE)},
+            new SignalContactDiscoveryUrl[]{new SignalContactDiscoveryUrl(SIGNAL_CONTACT_DISCOVERY_URL, TRUST_STORE)});
+    private Thread messageRetrieverThread = new Thread(new MessageRetriever());
+    private SignalProtocolStore protocolStore;
+    private Map<String, List<String>> groupIdToMembers = new HashMap<>();
+    private List<Responder> responders = new LinkedList<>();
+
+    public void register(String username) throws IOException, BackingStoreException {
+        logger.info("Sending verification SMS to " + username + ".");
+        prefs.clear();
+        String password = Base64.encodeBytes(Util.getSecretBytes(18));
+        prefs.put("LOCAL_USERNAME", username);
+        prefs.put("LOCAL_PASSWORD", password);
+        SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        accountManager.requestSmsVerificationCode(false);
+    }
+
+    public void verify(String verificationCode) throws IOException {
+        String username = prefs.get("LOCAL_USERNAME", null);
+        String password = prefs.get("LOCAL_PASSWORD", null);
+        logger.info("Verifying user " + username + " with code " + verificationCode + "...");
+        String code = verificationCode.replace("-", "");
+        int registrationId = KeyHelper.generateRegistrationId(false);
+        byte[] profileKey = Util.getSecretBytes(32);
+        prefs.put("ENCODED_PROFILE_KEY", Base64.encodeBytes(profileKey));
+        byte[] unidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(profileKey);
+        prefs.putInt("REGISTRATION_ID", registrationId);
+        SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        accountManager.verifyAccountWithCode(code, null, registrationId, true, null, unidentifiedAccessKey, false);
+    }
+
+    public void listen() throws IOException, InvalidKeyException {
+        String username = prefs.get("LOCAL_USERNAME", null);
+        String password = prefs.get("LOCAL_PASSWORD", null);
+        logger.info("Generating keys for " + username + "...");
+        ECKeyPair djbKeyPair = Curve.generateKeyPair();
+        IdentityKey djbIdentityKey = new IdentityKey(djbKeyPair.getPublicKey());
+        ECPrivateKey djbPrivateKey = djbKeyPair.getPrivateKey();
+        IdentityKeyPair identityKeyPair = new IdentityKeyPair(djbIdentityKey, djbPrivateKey);
+        int registrationId = prefs.getInt("REGISTRATION_ID", -1);
+        this.protocolStore = new InMemorySignalProtocolStore(identityKeyPair, registrationId);
+        List<PreKeyRecord> records = generatePreKeys();
+        SignedPreKeyRecord signedPreKey = generateSignedPreKey(identityKeyPair);
+        SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        accountManager.setPreKeys(identityKeyPair.getPublicKey(), signedPreKey, records);
+        logger.info("Starting message listener...");
+        messageRetrieverThread.start();
+        accountManager.cancelInFlightRequests();
+    }
+
+    public void stopListening() {
+        if (!messageRetrieverThread.isAlive()) return;
+        logger.info("Stopping message listener...");
+        messageRetrieverThread.interrupt();
+        try {
+            messageRetrieverThread.join();
+        } catch (InterruptedException e) {
+            logger.warning(e.toString());
+        }
+        logger.info("Message listener stopped.");
+    }
+
+    public void addResponder(Responder responder) {
+        responders.add(responder);
+    }
+
+    private List<PreKeyRecord> generatePreKeys() {
+        List<PreKeyRecord> records = new LinkedList<>();
+        int preKeyIdOffset = new SecureRandom().nextInt(Medium.MAX_VALUE);
+        for (int i = 0; i < BATCH_SIZE; i++) {
+            int preKeyId = (preKeyIdOffset + i) % Medium.MAX_VALUE;
+            ECKeyPair keyPair = Curve.generateKeyPair();
+            PreKeyRecord record = new PreKeyRecord(preKeyId, keyPair);
+
+            protocolStore.storePreKey(preKeyId, record);
+            records.add(record);
+        }
+        return records;
+    }
+
+    private SignedPreKeyRecord generateSignedPreKey(IdentityKeyPair identityKeyPair) throws InvalidKeyException {
+        int signedPreKeyId = new SecureRandom().nextInt(Medium.MAX_VALUE);
+        ECKeyPair keyPair = Curve.generateKeyPair();
+        byte[] signature = Curve.calculateSignature(identityKeyPair.getPrivateKey(), keyPair.getPublicKey().serialize());
+        SignedPreKeyRecord record = new SignedPreKeyRecord(signedPreKeyId, System.currentTimeMillis(), keyPair, signature);
+        protocolStore.storeSignedPreKey(signedPreKeyId, record);
+        return record;
+    }
+
+    public interface Responder {
+        /**
+         * @param messageText input message
+         * @return message to send back, or null for no response
+         */
+        String getResponse(String messageText);
+    }
+
+    private class MessageRetriever implements Runnable {
+
+        @Override
+        public void run() {
+            String username = prefs.get("LOCAL_USERNAME", null);
+            String password = prefs.get("LOCAL_PASSWORD", null);
+            SignalServiceMessageReceiver messageReceiver = new SignalServiceMessageReceiver(config,
+                    username, password, null, USER_AGENT,
+                    new PipeConnectivityListener(), new UptimeSleepTimer());
+            SignalServiceMessageSender messageSender = new SignalServiceMessageSender(config, username, password, protocolStore, USER_AGENT,
+                    false, Optional.absent(), Optional.absent(), Optional.absent());
+            CertificateValidator validator;
+            try {
+                validator = new CertificateValidator(Curve.decodePoint(Base64.decode(UNIDENTIFIED_SENDER_TRUST_ROOT), 0));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            SignalServiceCipher cipher = new SignalServiceCipher(new SignalServiceAddress(username), protocolStore, validator);
+            SignalServiceMessagePipe messagePipe = messageReceiver.createMessagePipe();
+            try {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        logger.info("Waiting for messages...");
+                        SignalServiceEnvelope envelope = messagePipe.read(30, TimeUnit.SECONDS);
+                        SignalServiceContent message = cipher.decrypt(envelope);
+                        if (message == null) continue;
+                        SignalServiceAddress sender = new SignalServiceAddress(message.getSender());
+                        SignalServiceDataMessage messageData = message.getDataMessage().orNull();
+                        if (messageData == null) continue;
+                        SignalServiceGroup groupInfo = messageData.getGroupInfo().orNull();
+                        byte[] groupId = {};
+                        String groupIdKey = "";
+                        if (groupInfo != null) {
+                            groupId = groupInfo.getGroupId();
+                            groupIdKey = new String(groupId);
+                            if (groupInfo.getMembers().isPresent()) {
+                                groupIdToMembers.put(groupIdKey, new LinkedList<>(groupInfo.getMembers().get()));
+                            } else if (!groupIdToMembers.containsKey(groupIdKey)) {
+                                SignalServiceGroup group = SignalServiceGroup.newBuilder(SignalServiceGroup.Type.REQUEST_INFO).withId(groupId).build();
+                                SignalServiceDataMessage groupInfoRequestMessage = SignalServiceDataMessage.newBuilder().asGroupMessage(group).build();
+                                messageSender.sendMessage(sender, Optional.absent(), groupInfoRequestMessage);
+                            }
+                        }
+                        String messageBody = messageData.getBody().orNull();
+                        if (messageBody != null && !messageBody.isEmpty()) {
+                            logger.info("Received message: " + messageBody);
+                            for (Responder responder : responders) {
+                                String response = responder.getResponse(messageBody);
+                                if (response != null && !response.isEmpty()) {
+                                    logger.info(responder.getClass().getSimpleName() + " sending response: " + response);
+                                    long quoteId = messageData.getTimestamp();
+                                    SignalServiceDataMessage.Quote quote = new SignalServiceDataMessage.Quote(quoteId, sender, messageBody, new LinkedList<>());
+                                    if (groupInfo != null) {
+                                        if (groupIdToMembers.containsKey(groupIdKey)) {
+                                            List<SignalServiceAddress> groupMembers = groupIdToMembers.get(groupIdKey).stream().map(SignalServiceAddress::new).collect(Collectors.toList());
+                                            List<Optional<UnidentifiedAccessPair>> uap = Collections.nCopies(groupMembers.size(), Optional.absent());
+                                            SignalServiceGroup group = SignalServiceGroup.newBuilder(SignalServiceGroup.Type.DELIVER).withId(groupId).build();
+                                            SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().asGroupMessage(group).withQuote(quote).withBody(response).build();
+                                            messageSender.sendMessage(groupMembers, uap, responseData);
+                                        }
+                                    } else {
+                                        SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().withQuote(quote).withBody(response).build();
+                                        messageSender.sendMessage(sender, Optional.absent(), responseData);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (TimeoutException e) {
+                        logger.info("Timed out, retrying...");
+                    } catch (Exception e) {
+                        logger.warning("Error processing message: " + e);
+                    }
+                }
+            } catch (Throwable t) {
+                // avoiding the AssertionError coming from messagePipe.read when it's interrupted...
+            } finally {
+                logger.info("Shutting down message pipe...");
+                messagePipe.shutdown();
+            }
+        }
+    }
+
+    private class PipeConnectivityListener implements ConnectivityListener {
+
+        @Override
+        public void onConnected() {
+            logger.log(Level.INFO, "PipeConnectivityListener.onConnected()");
+        }
+
+        @Override
+        public void onConnecting() {
+            logger.info("PipeConnectivityListener.onConnecting()");
+        }
+
+        @Override
+        public void onDisconnected() {
+            logger.info("PipeConnectivityListener.onDisconnected()");
+        }
+
+        @Override
+        public void onAuthenticationFailure() {
+            logger.info("PipeConnectivityListener.onAuthenticationFailure()");
+        }
+    }
+}

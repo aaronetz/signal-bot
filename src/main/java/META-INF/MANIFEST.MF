@@ -1,0 +1,11 @@
+Manifest-Version: 1.0
+Class-Path: threetenbp-1.3.6.jar curve25519-java-0.4.1.jar protobuf-ja
+ va-2.5.0.jar jackson-core-2.9.5.jar pkix-1.51.0.0.jar okhttp-3.9.0.ja
+ r core-1.51.0.0.jar commons-codec-1.9.jar signal-metadata-java-0.0.2.
+ jar jackson-annotations-2.9.0.jar libphonenumber-8.8.10.jar signal-pr
+ otocol-java-2.7.0.jar signal-service-java-2.12.7.jar httpclient-4.4.j
+ ar bcpkix-jdk15on-1.61.jar commons-cli-1.4.jar bcprov-jdk15on-1.61.ja
+ r commons-logging-1.2.jar httpcore-4.4.jar prov-1.51.0.0.jar jackson-
+ databind-2.9.5.jar okio-1.13.0.jar
+Main-Class: com.woodencloset.signalbot.Main
+

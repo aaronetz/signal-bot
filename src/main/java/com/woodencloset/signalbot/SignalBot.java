@@ -42,7 +42,6 @@ import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
@@ -190,7 +189,7 @@ public class SignalBot {
                 while (!Thread.currentThread().isInterrupted()) {
                     try {
                         logger.info("Waiting for messages...");
-                        SignalServiceEnvelope envelope = messagePipe.read(30, TimeUnit.SECONDS);
+                        SignalServiceEnvelope envelope = messagePipe.read(60, TimeUnit.SECONDS);
                         SignalServiceContent message = cipher.decrypt(envelope);
                         if (message == null) continue;
                         SignalServiceAddress sender = new SignalServiceAddress(message.getSender());
@@ -203,15 +202,18 @@ public class SignalBot {
                             groupId = groupInfo.getGroupId();
                             groupIdKey = new String(groupId);
                             if (groupInfo.getMembers().isPresent()) {
-                                groupIdToMembers.put(groupIdKey, new LinkedList<>(groupInfo.getMembers().get()));
+                                logger.info("Received member list for group: " + groupInfo.getName().or("n/a"));
+                                groupIdToMembers.put(groupIdKey, groupInfo.getMembers().get());
                             } else if (!groupIdToMembers.containsKey(groupIdKey)) {
+                                logger.info("Received message from an unknown group, sending info request.");
                                 SignalServiceGroup group = SignalServiceGroup.newBuilder(SignalServiceGroup.Type.REQUEST_INFO).withId(groupId).build();
                                 SignalServiceDataMessage groupInfoRequestMessage = SignalServiceDataMessage.newBuilder().asGroupMessage(group).build();
                                 messageSender.sendMessage(sender, Optional.absent(), groupInfoRequestMessage);
+                                continue;
                             }
                         }
-                        String messageBody = messageData.getBody().orNull();
-                        if (messageBody != null && !messageBody.isEmpty()) {
+                        String messageBody = messageData.getBody().or("");
+                        if (!messageBody.isEmpty()) {
                             logger.info("Received message: " + messageBody);
                             for (Responder responder : responders) {
                                 String response = responder.getResponse(messageBody);
@@ -220,13 +222,11 @@ public class SignalBot {
                                     long quoteId = messageData.getTimestamp();
                                     SignalServiceDataMessage.Quote quote = new SignalServiceDataMessage.Quote(quoteId, sender, messageBody, new LinkedList<>());
                                     if (groupInfo != null) {
-                                        if (groupIdToMembers.containsKey(groupIdKey)) {
-                                            List<SignalServiceAddress> groupMembers = groupIdToMembers.get(groupIdKey).stream().map(SignalServiceAddress::new).collect(Collectors.toList());
-                                            List<Optional<UnidentifiedAccessPair>> uap = Collections.nCopies(groupMembers.size(), Optional.absent());
-                                            SignalServiceGroup group = SignalServiceGroup.newBuilder(SignalServiceGroup.Type.DELIVER).withId(groupId).build();
-                                            SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().asGroupMessage(group).withQuote(quote).withBody(response).build();
-                                            messageSender.sendMessage(groupMembers, uap, responseData);
-                                        }
+                                        List<SignalServiceAddress> groupMembers = groupIdToMembers.get(groupIdKey).stream().map(SignalServiceAddress::new).collect(Collectors.toList());
+                                        List<Optional<UnidentifiedAccessPair>> uap = Collections.nCopies(groupMembers.size(), Optional.absent());
+                                        SignalServiceGroup group = SignalServiceGroup.newBuilder(SignalServiceGroup.Type.DELIVER).withId(groupId).build();
+                                        SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().asGroupMessage(group).withQuote(quote).withBody(response).build();
+                                        messageSender.sendMessage(groupMembers, uap, responseData);
                                     } else {
                                         SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().withQuote(quote).withBody(response).build();
                                         messageSender.sendMessage(sender, Optional.absent(), responseData);
@@ -235,7 +235,7 @@ public class SignalBot {
                             }
                         }
                     } catch (TimeoutException e) {
-                        logger.info("Timed out, retrying...");
+                        // Just let it run again
                     } catch (Exception e) {
                         logger.warning("Error processing message: " + e);
                     }
@@ -253,7 +253,7 @@ public class SignalBot {
 
         @Override
         public void onConnected() {
-            logger.log(Level.INFO, "PipeConnectivityListener.onConnected()");
+            logger.info("PipeConnectivityListener.onConnected()");
         }
 
         @Override

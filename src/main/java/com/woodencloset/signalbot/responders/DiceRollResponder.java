@@ -8,10 +8,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class DiceRollResponder implements SignalBot.Responder {
-    private static Pattern DICE_ROLL_PATTERN = Pattern.compile("(?i)roll\\s+(?<dice>\\d+)d(?<sides>\\d+)");
-    private static Random RANDOM = new Random();
-    private static int MAX_DICE = 20;
-    private static int MAX_SIDES = 100;
+    private static final Pattern DICE_ROLL_PATTERN = Pattern.compile("(?i)roll\\s+(?<dice>\\d+)d(?<sides>\\d+)");
+    private static final Random RANDOM = new Random();
+    private static final int MAX_DICE = 20;
+    private static final int MAX_SIDES = 100;
 
     @Override
     public String getResponse(String messageText) {
@@ -19,7 +19,7 @@ public class DiceRollResponder implements SignalBot.Responder {
         if (matcher.matches()) {
             int numDice = Math.min(Integer.parseInt(matcher.group("dice")), MAX_DICE);
             int numSides = Math.min(Integer.parseInt(matcher.group("sides")), MAX_SIDES);
-            String randomString = RANDOM.ints(numDice, 1, numSides+1)
+            String randomString = RANDOM.ints(numDice, 1, numSides + 1)
                     .mapToObj(String::valueOf)
                     .collect(Collectors.joining(", ", "[", "]"));
 

@@ -7,40 +7,11 @@ import org.whispersystems.libsignal.InvalidKeyException;
 
 import java.io.IOException;
 import java.security.Security;
-import java.util.logging.LogManager;
 import java.util.prefs.BackingStoreException;
 
 public class Main {
 
     static private SignalBot bot = new SignalBot();
-
-    // hack to let loggers work during shutdown hook
-    public static class MyLogManager extends LogManager {
-        static MyLogManager instance;
-
-        public MyLogManager() { instance = this; }
-
-        static void resetFinally() { instance.reset0(); }
-
-        @Override
-        public void reset() { /* don't reset yet. */ }
-
-        private void reset0() { super.reset(); }
-    }
-
-    static {
-        System.setProperty("java.util.logging.manager", MyLogManager.class.getName());
-    }
-
-    static {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                bot.stopListening();
-            } finally {
-                MyLogManager.resetFinally();
-            }
-        }));
-    }
 
     public static void main(String[] args) throws IOException, InvalidKeyException, BackingStoreException {
 
@@ -71,6 +42,7 @@ public class Main {
         } else if (cmd.hasOption("verify")) {
             bot.verify(cmd.getOptionValue("verify"));
         } else if (cmd.hasOption("listen")) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> bot.stopListening()));
             bot.addResponder(new DiceRollResponder());
             bot.listen();
         }

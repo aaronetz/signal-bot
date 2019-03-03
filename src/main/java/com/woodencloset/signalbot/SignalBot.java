@@ -1,12 +1,9 @@
 package com.woodencloset.signalbot;
 
 import org.signal.libsignal.metadata.certificate.CertificateValidator;
-import org.whispersystems.libsignal.IdentityKey;
 import org.whispersystems.libsignal.IdentityKeyPair;
 import org.whispersystems.libsignal.InvalidKeyException;
 import org.whispersystems.libsignal.ecc.Curve;
-import org.whispersystems.libsignal.ecc.ECKeyPair;
-import org.whispersystems.libsignal.ecc.ECPrivateKey;
 import org.whispersystems.libsignal.state.PreKeyRecord;
 import org.whispersystems.libsignal.state.SignalProtocolStore;
 import org.whispersystems.libsignal.state.SignedPreKeyRecord;
@@ -92,10 +89,9 @@ public class SignalBot {
         logger.info("Verifying user " + username + " with code " + verificationCode + "...");
         String code = verificationCode.replace("-", "");
         int registrationId = KeyHelper.generateRegistrationId(false);
-        byte[] profileKey = Util.getSecretBytes(32);
-        prefs.put("ENCODED_PROFILE_KEY", Base64.encodeBytes(profileKey));
-        byte[] unidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(profileKey);
         prefs.putInt("REGISTRATION_ID", registrationId);
+        byte[] profileKey = Util.getSecretBytes(32);
+        byte[] unidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(profileKey);
         SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
         accountManager.verifyAccountWithCode(code, null, registrationId, true, null, unidentifiedAccessKey, false);
     }
@@ -104,19 +100,14 @@ public class SignalBot {
         String username = prefs.get("LOCAL_USERNAME", null);
         String password = prefs.get("LOCAL_PASSWORD", null);
         logger.info("Generating keys for " + username + "...");
-        ECKeyPair djbKeyPair = Curve.generateKeyPair();
-        IdentityKey djbIdentityKey = new IdentityKey(djbKeyPair.getPublicKey());
-        ECPrivateKey djbPrivateKey = djbKeyPair.getPrivateKey();
-        IdentityKeyPair identityKeyPair = new IdentityKeyPair(djbIdentityKey, djbPrivateKey);
+        IdentityKeyPair identityKeyPair = KeyHelper.generateIdentityKeyPair();
         int registrationId = prefs.getInt("REGISTRATION_ID", -1);
         this.protocolStore = new InMemorySignalProtocolStore(identityKeyPair, registrationId);
-        List<PreKeyRecord> records = generatePreKeys();
-        SignedPreKeyRecord signedPreKey = generateSignedPreKey(identityKeyPair);
         SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
-        accountManager.setPreKeys(identityKeyPair.getPublicKey(), signedPreKey, records);
+        refreshPreKeys(accountManager, identityKeyPair);
         logger.info("Starting message listener...");
         messageRetrieverThread.start();
-        accountManager.cancelInFlightRequests();
+        // TODO refresh keys job
     }
 
     public void stopListening() {
@@ -143,27 +134,14 @@ public class SignalBot {
         responders.add(responder);
     }
 
-    private List<PreKeyRecord> generatePreKeys() {
-        List<PreKeyRecord> records = new LinkedList<>();
-        int preKeyIdOffset = new SecureRandom().nextInt(Medium.MAX_VALUE);
-        for (int i = 0; i < BATCH_SIZE; i++) {
-            int preKeyId = (preKeyIdOffset + i) % Medium.MAX_VALUE;
-            ECKeyPair keyPair = Curve.generateKeyPair();
-            PreKeyRecord record = new PreKeyRecord(preKeyId, keyPair);
-
-            protocolStore.storePreKey(preKeyId, record);
-            records.add(record);
-        }
-        return records;
-    }
-
-    private SignedPreKeyRecord generateSignedPreKey(IdentityKeyPair identityKeyPair) throws InvalidKeyException {
+    private void refreshPreKeys(SignalServiceAccountManager accountManager, IdentityKeyPair identityKeyPair) throws IOException, InvalidKeyException {
+        int initialPreKeyId = new SecureRandom().nextInt(Medium.MAX_VALUE);
+        List<PreKeyRecord> records = KeyHelper.generatePreKeys(initialPreKeyId, BATCH_SIZE);
+        records.forEach((v) -> this.protocolStore.storePreKey(v.getId(), v));
         int signedPreKeyId = new SecureRandom().nextInt(Medium.MAX_VALUE);
-        ECKeyPair keyPair = Curve.generateKeyPair();
-        byte[] signature = Curve.calculateSignature(identityKeyPair.getPrivateKey(), keyPair.getPublicKey().serialize());
-        SignedPreKeyRecord record = new SignedPreKeyRecord(signedPreKeyId, System.currentTimeMillis(), keyPair, signature);
-        protocolStore.storeSignedPreKey(signedPreKeyId, record);
-        return record;
+        SignedPreKeyRecord signedPreKey = KeyHelper.generateSignedPreKey(identityKeyPair, signedPreKeyId);
+        this.protocolStore.storeSignedPreKey(signedPreKey.getId(), signedPreKey);
+        accountManager.setPreKeys(identityKeyPair.getPublicKey(), signedPreKey, records);
     }
 
     public interface Responder {
@@ -261,22 +239,22 @@ public class SignalBot {
 
         @Override
         public void onConnected() {
-            logger.info("PipeConnectivityListener.onConnected()");
+            logger.info("Message pipe connected.");
         }
 
         @Override
         public void onConnecting() {
-            logger.info("PipeConnectivityListener.onConnecting()");
+            logger.info("Message pipe connecting...");
         }
 
         @Override
         public void onDisconnected() {
-            logger.info("PipeConnectivityListener.onDisconnected()");
+            logger.info("Message pipe disconnected.");
         }
 
         @Override
         public void onAuthenticationFailure() {
-            logger.info("PipeConnectivityListener.onAuthenticationFailure()");
+            logger.info("Message pipe failure!");
         }
     }
 }

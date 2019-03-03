@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class HebrewDiceRollResponder implements SignalBot.Responder {
-    private static final Pattern DICE_ROLL_PATTERN = Pattern.compile("(?<sides>\\d+)ק(?<dice>\\d+)\\s+לגלג");
+    private static final Pattern DICE_ROLL_PATTERN = Pattern.compile("גלגל\\s+(?<dice>\\d+)ק(?<sides>\\d+)");
     private static final Random RANDOM = new Random();
     private static final int MAX_DICE = 20;
     private static final int MAX_SIDES = 100;
@@ -23,7 +23,7 @@ public class HebrewDiceRollResponder implements SignalBot.Responder {
                     .mapToObj(String::valueOf)
                     .collect(Collectors.joining(", ", "[", "]"));
 
-            return String.format("%s :%dק%d", randomString, numSides, numDice);
+            return String.format("%dק%d: %s", numDice, numSides, randomString);
         }
         return null;
     }

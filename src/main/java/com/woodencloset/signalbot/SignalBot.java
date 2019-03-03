@@ -131,6 +131,14 @@ public class SignalBot {
         logger.info("Message listener stopped.");
     }
 
+    public void testResponders(String input) {
+        logger.info("Testing responders on input: " + input);
+        for (Responder responder : responders) {
+            String response = responder.getResponse(input);
+            logger.info(responder.getClass().getSimpleName() + " sending response: " + response);
+        }
+    }
+
     public void addResponder(Responder responder) {
         responders.add(responder);
     }

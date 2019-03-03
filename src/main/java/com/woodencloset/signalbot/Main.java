@@ -1,10 +1,12 @@
 package com.woodencloset.signalbot;
 
 import com.woodencloset.signalbot.responders.DiceRollResponder;
+import com.woodencloset.signalbot.responders.HebrewDiceRollResponder;
 import org.apache.commons.cli.*;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.whispersystems.libsignal.InvalidKeyException;
 
+import java.io.Console;
 import java.io.IOException;
 import java.security.Security;
 import java.util.prefs.BackingStoreException;
@@ -23,6 +25,7 @@ public class Main {
         commands.addOption(new Option("r", "register", true, "Register user with given phone number. Sends a verification SMS."));
         commands.addOption(new Option("v", "verify", true, "Verify user with given verification code."));
         commands.addOption(new Option("l", "listen", false, "Listen to incoming messages"));
+        commands.addOption(new Option("t", "test", false, "Test all responders using text input"));
         options.addOptionGroup(commands);
 
         CommandLineParser parser = new DefaultParser();
@@ -37,14 +40,24 @@ public class Main {
             System.exit(1);
         }
 
+        bot.addResponder(new DiceRollResponder());
+        bot.addResponder(new HebrewDiceRollResponder());
+
         if (cmd.hasOption("register")) {
             bot.register(cmd.getOptionValue("register"));
         } else if (cmd.hasOption("verify")) {
             bot.verify(cmd.getOptionValue("verify"));
         } else if (cmd.hasOption("listen")) {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> bot.stopListening()));
-            bot.addResponder(new DiceRollResponder());
             bot.listen();
+        } else if (cmd.hasOption("test")) {
+            Console console = System.console();
+            while (true) {
+                String input = console.readLine("Enter input (ENTER to exit): ");
+                if (input.isEmpty()) break;
+                bot.testResponders(input);
+            }
+            System.out.println("Empty input, exiting.");
         }
     }
 }

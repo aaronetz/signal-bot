@@ -72,6 +72,7 @@ public class SignalBot {
     private SignalProtocolStore protocolStore;
     private Map<String, List<String>> groupIdToMembers = new HashMap<>();
     private List<Responder> responders = new LinkedList<>();
+    private SignalServiceAccountManager accountManager;
 
     public void register(String username) throws IOException, BackingStoreException {
         logger.info("Sending verification SMS to " + username + ".");
@@ -79,7 +80,7 @@ public class SignalBot {
         String password = Base64.encodeBytes(Util.getSecretBytes(18));
         prefs.put("LOCAL_USERNAME", username);
         prefs.put("LOCAL_PASSWORD", password);
-        SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
         accountManager.requestSmsVerificationCode(false);
     }
 
@@ -92,7 +93,7 @@ public class SignalBot {
         prefs.putInt("REGISTRATION_ID", registrationId);
         byte[] profileKey = Util.getSecretBytes(32);
         byte[] unidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(profileKey);
-        SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
         accountManager.verifyAccountWithCode(code, null, registrationId, true, null, unidentifiedAccessKey, false);
     }
 
@@ -103,8 +104,8 @@ public class SignalBot {
         IdentityKeyPair identityKeyPair = KeyHelper.generateIdentityKeyPair();
         int registrationId = prefs.getInt("REGISTRATION_ID", -1);
         this.protocolStore = new InMemorySignalProtocolStore(identityKeyPair, registrationId);
-        SignalServiceAccountManager accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
-        refreshPreKeys(accountManager, identityKeyPair);
+        accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        refreshPreKeys(identityKeyPair);
         logger.info("Starting message listener...");
         messageRetrieverThread.start();
         // TODO refresh keys job
@@ -134,14 +135,14 @@ public class SignalBot {
         responders.add(responder);
     }
 
-    private void refreshPreKeys(SignalServiceAccountManager accountManager, IdentityKeyPair identityKeyPair) throws IOException, InvalidKeyException {
+    private void refreshPreKeys(IdentityKeyPair identityKeyPair) throws IOException, InvalidKeyException {
         int initialPreKeyId = new SecureRandom().nextInt(Medium.MAX_VALUE);
         List<PreKeyRecord> records = KeyHelper.generatePreKeys(initialPreKeyId, BATCH_SIZE);
         records.forEach((v) -> this.protocolStore.storePreKey(v.getId(), v));
         int signedPreKeyId = new SecureRandom().nextInt(Medium.MAX_VALUE);
         SignedPreKeyRecord signedPreKey = KeyHelper.generateSignedPreKey(identityKeyPair, signedPreKeyId);
         this.protocolStore.storeSignedPreKey(signedPreKey.getId(), signedPreKey);
-        accountManager.setPreKeys(identityKeyPair.getPublicKey(), signedPreKey, records);
+        this.accountManager.setPreKeys(identityKeyPair.getPublicKey(), signedPreKey, records);
     }
 
     public interface Responder {
@@ -176,6 +177,9 @@ public class SignalBot {
                     try {
                         logger.info("Waiting for messages...");
                         SignalServiceEnvelope envelope = messagePipe.read(60, TimeUnit.SECONDS);
+                        if (envelope.isPreKeySignalMessage()) {
+                            logger.info("Pre keys count: " + accountManager.getPreKeysCount());
+                        }
                         SignalServiceContent message = cipher.decrypt(envelope);
                         if (message == null) continue;
                         SignalServiceAddress sender = new SignalServiceAddress(message.getSender());

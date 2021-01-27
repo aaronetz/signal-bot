@@ -1,6 +1,9 @@
 # signal-bot
 This is a simple bot system for [Signal](https://github.com/signalapp) with minimal dependencies. Pure Java and cross platform.
 
+## Prerequisites
+You need to have JDK 11 installed due to TLS v3 requirement. A newer JDK version should work but it's untested. You can get an installer from [AdoptOpenJDK](https://adoptopenjdk.net/).
+
 ## Building
 `gradlew installDist` should generate a run script at 'build/install/signal-bot/bin/signal-bot'.
 

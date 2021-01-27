@@ -30,7 +30,7 @@ import org.whispersystems.signalservice.internal.configuration.SignalCdnUrl;
 import org.whispersystems.signalservice.internal.configuration.SignalContactDiscoveryUrl;
 import org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration;
 import org.whispersystems.signalservice.internal.configuration.SignalServiceUrl;
-import org.whispersystems.signalservice.internal.util.Base64;
+import org.whispersystems.util.Base64;
 import org.whispersystems.signalservice.internal.util.Util;
 
 import java.io.IOException;
@@ -42,7 +42,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.logging.Logger;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
-import java.util.stream.Collectors;
 
 public class SignalBot {
     private static final String UNIDENTIFIED_SENDER_TRUST_ROOT = "BXu6QIKVz5MA8gstzfOgRQGqyLqOwNKHL6INkv3IHWMF";
@@ -70,7 +69,7 @@ public class SignalBot {
             new SignalContactDiscoveryUrl[]{new SignalContactDiscoveryUrl(SIGNAL_CONTACT_DISCOVERY_URL, TRUST_STORE)});
     private Thread messageRetrieverThread = new Thread(new MessageRetriever());
     private SignalProtocolStore protocolStore;
-    private Map<String, List<String>> groupIdToMembers = new HashMap<>();
+    private Map<String, List<SignalServiceAddress>> groupIdToMembers = new HashMap<>();
     private List<Responder> responders = new LinkedList<>();
     private SignalServiceAccountManager accountManager;
 
@@ -80,8 +79,8 @@ public class SignalBot {
         String password = Base64.encodeBytes(Util.getSecretBytes(18));
         prefs.put("LOCAL_USERNAME", username);
         prefs.put("LOCAL_PASSWORD", password);
-        accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
-        accountManager.requestSmsVerificationCode(false);
+        accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
+        accountManager.requestSmsVerificationCode(false, Optional.absent(), Optional.absent());
     }
 
     public void verify(String verificationCode) throws IOException {
@@ -93,18 +92,20 @@ public class SignalBot {
         prefs.putInt("REGISTRATION_ID", registrationId);
         byte[] profileKey = Util.getSecretBytes(32);
         byte[] unidentifiedAccessKey = UnidentifiedAccess.deriveAccessKeyFrom(profileKey);
-        accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
-        accountManager.verifyAccountWithCode(code, null, registrationId, true, null, unidentifiedAccessKey, false);
+        accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
+        UUID uuid = accountManager.verifyAccountWithCode(code, null, registrationId, true, null, unidentifiedAccessKey, false);
+        prefs.put("UUID", uuid.toString());
     }
 
     public void listen() throws IOException, InvalidKeyException {
         String username = prefs.get("LOCAL_USERNAME", null);
         String password = prefs.get("LOCAL_PASSWORD", null);
+        int registrationId = prefs.getInt("REGISTRATION_ID", -1);
+        UUID uuid = UUID.fromString(prefs.get("UUID", ""));
         logger.info("Generating keys for " + username + "...");
         IdentityKeyPair identityKeyPair = KeyHelper.generateIdentityKeyPair();
-        int registrationId = prefs.getInt("REGISTRATION_ID", -1);
         this.protocolStore = new InMemorySignalProtocolStore(identityKeyPair, registrationId);
-        accountManager = new SignalServiceAccountManager(config, username, password, USER_AGENT);
+        accountManager = new SignalServiceAccountManager(config, uuid, username, password, USER_AGENT);
         refreshPreKeys(identityKeyPair);
         logger.info("Starting message listener...");
         messageRetrieverThread.start();
@@ -159,10 +160,11 @@ public class SignalBot {
         public void run() {
             String username = prefs.get("LOCAL_USERNAME", null);
             String password = prefs.get("LOCAL_PASSWORD", null);
-            SignalServiceMessageReceiver messageReceiver = new SignalServiceMessageReceiver(config,
+            UUID uuid = UUID.fromString(prefs.get("UUID", ""));
+            SignalServiceMessageReceiver messageReceiver = new SignalServiceMessageReceiver(config, uuid,
                     username, password, null, USER_AGENT,
                     new PipeConnectivityListener(), new UptimeSleepTimer());
-            SignalServiceMessageSender messageSender = new SignalServiceMessageSender(config, username, password, protocolStore, USER_AGENT,
+            SignalServiceMessageSender messageSender = new SignalServiceMessageSender(config, uuid, username, password, protocolStore, USER_AGENT,
                     false, Optional.absent(), Optional.absent(), Optional.absent());
             CertificateValidator validator;
             try {
@@ -170,7 +172,7 @@ public class SignalBot {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-            SignalServiceCipher cipher = new SignalServiceCipher(new SignalServiceAddress(username), protocolStore, validator);
+            SignalServiceCipher cipher = new SignalServiceCipher(new SignalServiceAddress(uuid, username), protocolStore, validator);
             SignalServiceMessagePipe messagePipe = messageReceiver.createMessagePipe();
             try {
                 while (!Thread.currentThread().isInterrupted()) {
@@ -182,7 +184,7 @@ public class SignalBot {
                         }
                         SignalServiceContent message = cipher.decrypt(envelope);
                         if (message == null) continue;
-                        SignalServiceAddress sender = new SignalServiceAddress(message.getSender());
+                        SignalServiceAddress sender = message.getSender();
                         SignalServiceDataMessage messageData = message.getDataMessage().orNull();
                         if (messageData == null) continue;
                         SignalServiceGroup groupInfo = messageData.getGroupInfo().orNull();
@@ -212,11 +214,11 @@ public class SignalBot {
                                     long quoteId = messageData.getTimestamp();
                                     SignalServiceDataMessage.Quote quote = new SignalServiceDataMessage.Quote(quoteId, sender, messageBody, new LinkedList<>());
                                     if (groupInfo != null) {
-                                        List<SignalServiceAddress> groupMembers = groupIdToMembers.get(groupIdKey).stream().map(SignalServiceAddress::new).collect(Collectors.toList());
+                                        List<SignalServiceAddress> groupMembers = groupIdToMembers.get(groupIdKey);
                                         List<Optional<UnidentifiedAccessPair>> uap = Collections.nCopies(groupMembers.size(), Optional.absent());
                                         SignalServiceGroup group = SignalServiceGroup.newBuilder(SignalServiceGroup.Type.DELIVER).withId(groupId).build();
                                         SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().asGroupMessage(group).withQuote(quote).withBody(response).build();
-                                        messageSender.sendMessage(groupMembers, uap, responseData);
+                                        messageSender.sendMessage(groupMembers, uap, false, responseData);
                                     } else {
                                         SignalServiceDataMessage responseData = SignalServiceDataMessage.newBuilder().withQuote(quote).withBody(response).build();
                                         messageSender.sendMessage(sender, Optional.absent(), responseData);
@@ -239,7 +241,7 @@ public class SignalBot {
         }
     }
 
-    private class PipeConnectivityListener implements ConnectivityListener {
+    private static class PipeConnectivityListener implements ConnectivityListener {
 
         @Override
         public void onConnected() {

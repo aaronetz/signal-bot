@@ -22,7 +22,8 @@ public class Main {
         Options options = new Options();
         OptionGroup commands = new OptionGroup();
         commands.setRequired(true);
-        commands.addOption(new Option("r", "register", true, "Register user with given phone number. Sends a verification SMS."));
+        commands.addOption(new Option("rt", "register-text", true, "Register user with given phone number. Sends a text message with a verification code."));
+        commands.addOption(new Option("rv", "register-voice", true, "Register user with given phone number. Voice calls with a verification code."));
         commands.addOption(new Option("v", "verify", true, "Verify user with given verification code."));
         commands.addOption(new Option("l", "listen", false, "Listen to incoming messages"));
         commands.addOption(new Option("t", "test", false, "Test all responders using text input"));
@@ -43,8 +44,10 @@ public class Main {
         bot.addResponder(new DiceRollResponder());
         bot.addResponder(new HebrewDiceRollResponder());
 
-        if (cmd.hasOption("register")) {
-            bot.register(cmd.getOptionValue("register"));
+        if (cmd.hasOption("register-text")) {
+            bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage);
+        } else if (cmd.hasOption("register-voice")) {
+            bot.register(cmd.getOptionValue("register-voice"), SignalBot.RegistrationType.PhoneCall);
         } else if (cmd.hasOption("verify")) {
             bot.verify(cmd.getOptionValue("verify"));
         } else if (cmd.hasOption("listen")) {

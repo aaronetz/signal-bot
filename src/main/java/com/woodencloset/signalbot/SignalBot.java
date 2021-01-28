@@ -44,6 +44,11 @@ import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
 
 public class SignalBot {
+    public enum RegistrationType {
+        TextMessage,
+        PhoneCall
+    }
+
     private static final String UNIDENTIFIED_SENDER_TRUST_ROOT = "BXu6QIKVz5MA8gstzfOgRQGqyLqOwNKHL6INkv3IHWMF";
     private static final String SIGNAL_URL = "https://textsecure-service.whispersystems.org";
     private static final String SIGNAL_CDN_URL = "https://cdn.signal.org";
@@ -73,14 +78,19 @@ public class SignalBot {
     private List<Responder> responders = new LinkedList<>();
     private SignalServiceAccountManager accountManager;
 
-    public void register(String username) throws IOException, BackingStoreException {
-        logger.info("Sending verification SMS to " + username + ".");
+    public void register(String username, RegistrationType type) throws IOException, BackingStoreException {
+        logger.info("Sending verification code to " + username + ".");
         prefs.clear();
         String password = Base64.encodeBytes(Util.getSecretBytes(18));
         prefs.put("LOCAL_USERNAME", username);
         prefs.put("LOCAL_PASSWORD", password);
         accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
-        accountManager.requestSmsVerificationCode(false, Optional.absent(), Optional.absent());
+
+        if (type == RegistrationType.PhoneCall) {
+            accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.absent(), Optional.absent());
+        } else {
+            accountManager.requestSmsVerificationCode(false, Optional.absent(), Optional.absent());
+        }
     }
 
     public void verify(String verificationCode) throws IOException {

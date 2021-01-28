@@ -2,13 +2,15 @@
 This is a simple bot system for [Signal](https://github.com/signalapp) with minimal dependencies. Pure Java and cross platform.
 
 ## Prerequisites
-You need to have JDK 11 installed due to TLS v3 requirement. A newer JDK version should work but it's untested. You can get an installer from [AdoptOpenJDK](https://adoptopenjdk.net/).
+- JDK 11+ due to TLS v3 requirement. A newer JDK version should work but it's untested. You can get an installer from [AdoptOpenJDK](https://adoptopenjdk.net/).
+- A phone number you can receive SMS messages or voice calls on. You'll need to dedicate that number to the bot.
 
 ## Building
 `gradlew installDist` should generate a run script at 'build/install/signal-bot/bin/signal-bot'.
 
 ## Running
-1. To register the bot on the Signal service, run `signal-bot --register +12223334444` (change the phone number to any number that you can receive an SMS on.)
+1. To register the bot on the Signal service, run `signal-bot --register-text +12223334444` (change the phone number to any number that you can receive an SMS on.)
+    * To get the verification code using a voice call instead, replace `register-text` with `register-voice`.
 2. After receiving the verification SMS, run `signal-bot --verify 123-456` (change the number to the code you received.)
 3. To start the bot, run `signal-bot --listen`. You should be able to then message the bot and see your messages in the log.
 4. To stop the bot, interrupt with Ctrl+C or `kill -2` to allow it to shut down and disconnect gracefully from the Signal service.

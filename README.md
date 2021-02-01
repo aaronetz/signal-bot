@@ -33,6 +33,7 @@ public class EchoResponder implements SignalBot.Responder {
 2. Add the line `bot.addResponder(new EchoResponder());` to the `Main` class (as an example, there is a `DiceRollResponder` included and added already.
 
 ## Limitations
-- For code simplicity, keys are stored in-memory, so it's mostly suitable for a long running session on a server. If you terminate and re-run, all keys (including identity key) will be re-generated which would neccessitate other parties to re-approve the bot's identity.
+- For code simplicity, keys are stored in-memory, so it's mostly suitable for a long running session on a server. If you terminate and re-run, all keys (including identity key) will be re-generated which would necessitate other parties to re-approve the bot's identity.
 - Group info is stored in-memory as well. If you join a group and then re-run the bot, the first message in the group will be ignored as the bot updates its internal group info. This could be solved by using a message queue, but that's currently not implemented, for code simplicity.
 - Bot interface only supports receiving and sending simple text responses. No images or other data. Messages are always sent back to the sender, or to the group, if sent from one.
+- Only legacy groups are currently supported. Supports for new groups is WIP.

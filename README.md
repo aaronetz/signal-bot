@@ -13,6 +13,7 @@ This is a simple bot system for [Signal](https://github.com/signalapp) with mini
     * To get the verification code using a voice call instead, replace `register-text` with `register-voice`.
 2. After receiving the verification SMS, run `signal-bot --verify 123-456` (change the number to the code you received.)
 3. To start the bot, run `signal-bot --listen`. You should be able to then message the bot and see your messages in the log.
+    * Note: it might take a few minutes for the bot to be properly registered with the Signal server and be able to receive messages.
 4. To stop the bot, interrupt with Ctrl+C or `kill -2` to allow it to shut down and disconnect gracefully from the Signal service.
 5. To dry-run test the listener, use `signal-bot --test`. This will start a simple input loop that sends your messages to the bot and sends the response to stdout. This doesn't use the Signal service.
 
@@ -30,7 +31,7 @@ public class EchoResponder implements SignalBot.Responder {
     }
 }
 ```
-2. Add the line `bot.addResponder(new EchoResponder());` to the `Main` class (as an example, there is a `DiceRollResponder` included and added already.
+2. Add the line `bot.addResponder(new EchoResponder());` to the `Main` class (as an example, there is a `DiceRollResponder` included and added already.)
 
 ## Limitations
 - For code simplicity, keys are stored in-memory, so it's mostly suitable for a long running session on a server. If you terminate and re-run, all keys (including identity key) will be re-generated which would necessitate other parties to re-approve the bot's identity.

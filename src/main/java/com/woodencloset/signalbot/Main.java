@@ -29,6 +29,10 @@ public class Main {
         commands.addOption(new Option("t", "test", false, "Test all responders using text input"));
         options.addOptionGroup(commands);
 
+        OptionGroup commands_ = new OptionGroup();
+        commands_.addOption(new Option("c", "captcha", true, "Register with  a captcha user with given phone number. Sends a text message with a verification code. (Use this link to retrive the captcha: https://signalcaptchas.org/registration/generate.html)"));
+        options.addOptionGroup(commands_);
+
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;
         try {
@@ -45,7 +49,12 @@ public class Main {
         bot.addResponder(new HebrewDiceRollResponder());
 
         if (cmd.hasOption("register-text")) {
-            bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage);
+            if (cmd.hasOption("captcha")) {
+                String captcha = cmd.getOptionValue("captcha");
+                bot.registerWCaptcha(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage, captcha);
+            }else {
+                bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage);
+            }
         } else if (cmd.hasOption("register-voice")) {
             bot.register(cmd.getOptionValue("register-voice"), SignalBot.RegistrationType.PhoneCall);
         } else if (cmd.hasOption("verify")) {

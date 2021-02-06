@@ -78,6 +78,21 @@ public class SignalBot {
     private List<Responder> responders = new LinkedList<>();
     private SignalServiceAccountManager accountManager;
 
+    public void registerWCaptcha(String username, RegistrationType type, String captcha) throws IOException, BackingStoreException {
+        logger.info("Sending verification code to " + username + ".");
+        prefs.clear();
+        String password = Base64.encodeBytes(Util.getSecretBytes(18));
+        prefs.put("LOCAL_USERNAME", username);
+        prefs.put("LOCAL_PASSWORD", password);
+        accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
+
+        if (type == RegistrationType.PhoneCall) {
+            accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.absent(), Optional.absent());
+        } else {
+            accountManager.requestSmsVerificationCode(false,  Optional.fromNullable(captcha), Optional.absent());
+        }
+    }
+    
     public void register(String username, RegistrationType type) throws IOException, BackingStoreException {
         logger.info("Sending verification code to " + username + ".");
         prefs.clear();

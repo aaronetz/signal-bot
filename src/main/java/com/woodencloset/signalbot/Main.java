@@ -24,14 +24,11 @@ public class Main {
         commands.setRequired(true);
         commands.addOption(new Option("rt", "register-text", true, "Register user with given phone number. Sends a text message with a verification code."));
         commands.addOption(new Option("rv", "register-voice", true, "Register user with given phone number. Voice calls with a verification code."));
+        commands.addOption(new Option("c", "captcha", true, "Register with  a captcha user with given phone number. Sends a text message with a verification code. (Use this link to retrive the captcha: https://signalcaptchas.org/registration/generate.html)"));
         commands.addOption(new Option("v", "verify", true, "Verify user with given verification code."));
         commands.addOption(new Option("l", "listen", false, "Listen to incoming messages"));
         commands.addOption(new Option("t", "test", false, "Test all responders using text input"));
         options.addOptionGroup(commands);
-
-        OptionGroup commands_ = new OptionGroup();
-        commands_.addOption(new Option("c", "captcha", true, "Register with  a captcha user with given phone number. Sends a text message with a verification code. (Use this link to retrive the captcha: https://signalcaptchas.org/registration/generate.html)"));
-        options.addOptionGroup(commands_);
 
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;
@@ -48,15 +45,12 @@ public class Main {
         bot.addResponder(new DiceRollResponder());
         bot.addResponder(new HebrewDiceRollResponder());
 
+        String captcha = cmd.hasOption("captcha") ? cmd.getOptionValue("captcha") : null;
+
         if (cmd.hasOption("register-text")) {
-            if (cmd.hasOption("captcha")) {
-                String captcha = cmd.getOptionValue("captcha");
-                bot.registerWCaptcha(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage, captcha);
-            }else {
-                bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage);
-            }
+            bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage, captcha); 
         } else if (cmd.hasOption("register-voice")) {
-            bot.register(cmd.getOptionValue("register-voice"), SignalBot.RegistrationType.PhoneCall);
+            bot.register(cmd.getOptionValue("register-voice"), SignalBot.RegistrationType.PhoneCall, captcha);
         } else if (cmd.hasOption("verify")) {
             bot.verify(cmd.getOptionValue("verify"));
         } else if (cmd.hasOption("listen")) {

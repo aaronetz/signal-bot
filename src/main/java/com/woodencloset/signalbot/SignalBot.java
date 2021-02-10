@@ -89,7 +89,7 @@ public class SignalBot {
         if (type == RegistrationType.PhoneCall) {
             accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.fromNullable(captcha), Optional.absent());
         } else {
-            accountManager.requestSmsVerificationCode(false,  Optional.fromNullable(captcha), Optional.absent());
+            accountManager.requestSmsVerificationCode(false, Optional.fromNullable(captcha), Optional.absent());
         }
     }
 

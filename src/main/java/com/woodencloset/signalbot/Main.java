@@ -24,7 +24,6 @@ public class Main {
         commands.setRequired(true);
         commands.addOption(new Option("rt", "register-text", true, "Register user with given phone number. Sends a text message with a verification code."));
         commands.addOption(new Option("rv", "register-voice", true, "Register user with given phone number. Voice calls with a verification code."));
-        commands.addOption(new Option("c", "captcha", true, "Register with  a captcha user with given phone number. Sends a text message with a verification code. (Use this link to retrive the captcha: https://signalcaptchas.org/registration/generate.html)"));
         commands.addOption(new Option("v", "verify", true, "Verify user with given verification code."));
         commands.addOption(new Option("l", "listen", false, "Listen to incoming messages"));
         commands.addOption(new Option("t", "test", false, "Test all responders using text input"));

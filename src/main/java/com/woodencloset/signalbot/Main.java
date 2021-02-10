@@ -28,6 +28,7 @@ public class Main {
         commands.addOption(new Option("l", "listen", false, "Listen to incoming messages"));
         commands.addOption(new Option("t", "test", false, "Test all responders using text input"));
         options.addOptionGroup(commands);
+        options.addOption(new Option("c", "captcha", true, "Optionally provide a Captcha token to be used with register-text or register-voice. Use this link to retrieve the captcha: https://signalcaptchas.org/registration/generate.html"));
 
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;
@@ -44,10 +45,12 @@ public class Main {
         bot.addResponder(new DiceRollResponder());
         bot.addResponder(new HebrewDiceRollResponder());
 
+        String captcha = cmd.hasOption("captcha") ? cmd.getOptionValue("captcha") : null;
+
         if (cmd.hasOption("register-text")) {
-            bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage);
+            bot.register(cmd.getOptionValue("register-text"), SignalBot.RegistrationType.TextMessage, captcha); 
         } else if (cmd.hasOption("register-voice")) {
-            bot.register(cmd.getOptionValue("register-voice"), SignalBot.RegistrationType.PhoneCall);
+            bot.register(cmd.getOptionValue("register-voice"), SignalBot.RegistrationType.PhoneCall, captcha);
         } else if (cmd.hasOption("verify")) {
             bot.verify(cmd.getOptionValue("verify"));
         } else if (cmd.hasOption("listen")) {

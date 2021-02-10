@@ -77,8 +77,8 @@ public class SignalBot {
     private Map<String, List<SignalServiceAddress>> groupIdToMembers = new HashMap<>();
     private List<Responder> responders = new LinkedList<>();
     private SignalServiceAccountManager accountManager;
-
-    public void register(String username, RegistrationType type) throws IOException, BackingStoreException {
+    
+    public void register(String username, RegistrationType type, String captcha) throws IOException, BackingStoreException {
         logger.info("Sending verification code to " + username + ".");
         prefs.clear();
         String password = Base64.encodeBytes(Util.getSecretBytes(18));
@@ -87,9 +87,9 @@ public class SignalBot {
         accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
 
         if (type == RegistrationType.PhoneCall) {
-            accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.absent(), Optional.absent());
+            accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.fromNullable(captcha), Optional.absent());
         } else {
-            accountManager.requestSmsVerificationCode(false, Optional.absent(), Optional.absent());
+            accountManager.requestSmsVerificationCode(false, Optional.fromNullable(captcha), Optional.absent());
         }
     }
 

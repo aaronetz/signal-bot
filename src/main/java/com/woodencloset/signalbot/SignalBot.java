@@ -85,7 +85,9 @@ public class SignalBot {
         prefs.put("LOCAL_USERNAME", username);
         prefs.put("LOCAL_PASSWORD", password);
         accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
-
+        if (captcha.contains("signalcaptcha://")) {
+            captcha = captcha.replace("signalcaptcha://","");
+        }
         if (type == RegistrationType.PhoneCall) {
             accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.fromNullable(captcha), Optional.absent());
         } else {

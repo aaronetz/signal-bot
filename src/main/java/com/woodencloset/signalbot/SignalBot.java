@@ -54,6 +54,8 @@ public class SignalBot {
     private static final String SIGNAL_CDN_URL = "https://cdn.signal.org";
     private static final String SIGNAL_CONTACT_DISCOVERY_URL = "https://api.directory.signal.org";
     private static final String USER_AGENT = "BOT";
+    public static final String SIGNAL_CAPTCHA_URL = "https://signalcaptchas.org/registration/generate.html";
+    private static final String SIGNAL_CAPTCHA_SCHEME = "signalcaptcha://";
     private static final TrustStore TRUST_STORE = new TrustStore() {
         @Override
         public InputStream getKeyStoreInputStream() {
@@ -86,10 +88,12 @@ public class SignalBot {
         prefs.put("LOCAL_PASSWORD", password);
         accountManager = new SignalServiceAccountManager(config, null, username, password, USER_AGENT);
         if (captcha != null && captcha.length() > 0) {
-            if (captcha.contains("signalcaptcha://")) {
-                captcha = captcha.replace("signalcaptcha://","");
+            if (captcha.startsWith(SIGNAL_CAPTCHA_SCHEME)) {
+                captcha = captcha.substring(SIGNAL_CAPTCHA_SCHEME.length());
+                logger.info("Using captcha token " + captcha);
+            } else {
+                logger.warning("Unknown captcha response supplied, please use raw response from " + SIGNAL_CAPTCHA_URL + ", including the following prefix: " + SIGNAL_CAPTCHA_SCHEME);
             }
-            logger.info("Using captcha " + captcha);
         }
         if (type == RegistrationType.PhoneCall) {
             accountManager.requestVoiceVerificationCode(Locale.getDefault(), Optional.fromNullable(captcha), Optional.absent());

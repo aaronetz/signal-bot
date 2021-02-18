@@ -28,7 +28,7 @@ public class Main {
         commands.addOption(new Option("l", "listen", false, "Listen to incoming messages"));
         commands.addOption(new Option("t", "test", false, "Test all responders using text input"));
         options.addOptionGroup(commands);
-        options.addOption(new Option("c", "captcha", true, "Optionally provide a Captcha token to be used with register-text or register-voice. Use this link to retrieve the captcha: https://signalcaptchas.org/registration/generate.html"));
+        options.addOption(new Option("c", "captcha", true, "Optionally provide a Captcha token to be used with register-text or register-voice. Use this link to retrieve the captcha: " + SignalBot.SIGNAL_CAPTCHA_URL));
 
         CommandLineParser parser = new DefaultParser();
         CommandLine cmd = null;

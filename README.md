@@ -38,3 +38,6 @@ public class EchoResponder implements SignalBot.Responder {
 - Group info is stored in-memory as well. If you join a group and then re-run the bot, the first message in the group will be ignored as the bot updates its internal group info. This could be solved by using a message queue, but that's currently not implemented, for code simplicity.
 - Bot interface only supports receiving and sending simple text responses. No images or other data. Messages are always sent back to the sender, or to the group, if sent from one.
 - Only legacy groups are currently supported. Supports for new groups is WIP.
+
+## Contact
+https://www.reddit.com/user/woodencloset/
